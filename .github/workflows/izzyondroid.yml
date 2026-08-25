@@ -48,6 +48,9 @@ jobs:
             rethink-izzyondroid.jks.asc \
             app/rethinkIzzyOnDroid.jks
 
+      - name: 🧅 Build embedded-Tailscale AAR
+        uses: ./.github/actions/build-tailscale-aar
+
       # Build the F-Droid variant using the IzzyOnDroid signing key
       - name: Build
         run: |

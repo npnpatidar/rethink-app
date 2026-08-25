@@ -33,6 +33,10 @@ jobs:
       - name: ⚡️ +x gradlew
         run: chmod +x gradlew
 
+      - name: 🧅 Build embedded-Tailscale AAR
+        uses: ./.github/actions/build-tailscale-aar
+
+
       - name: 🚂 Assemble TV variant
         run: |
           ./gradlew \

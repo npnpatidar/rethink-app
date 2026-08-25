@@ -77,6 +77,7 @@ object GlobalProxyHandler : KoinComponent {
     private const val BACKOFF_BASE_MS = 60 * 1000L
 
     private val eventLogger: EventLogger by inject()
+    private fun ts(): TailscaleManager = inject<TailscaleManager>().value
 
     class ProxyEntry(@Volatile var addedAtElapsed: Long) {
         @Volatile var attempts: Int = 0
@@ -227,6 +228,9 @@ object GlobalProxyHandler : KoinComponent {
                 val proxyId = id.substring(ID_WG_BASE.length).toIntOrNull()
                 proxyId != null && WireguardManager.getConfigById(proxyId) != null
             }
+            id == TailscaleManager.ID_TS_BASE -> {
+                ts().isEnabled() && ts().isEngineUp && ts().currentState().isUsable
+            }
             // S5/HTTP/Orbot have no persistent config to reconcile against
             else -> true
         }
@@ -247,6 +251,9 @@ object GlobalProxyHandler : KoinComponent {
             }
             id.startsWith(ID_WG_BASE) -> {
                 VpnController.addWireGuardProxy(id, force = true)
+            }
+            id == TailscaleManager.ID_TS_BASE -> {
+                VpnController.onTailscaleReady()
             }
             else -> {
                 Logger.w(LOG_TAG_PROXY, "$TAG unknown proxy id, skip re-add: $id")

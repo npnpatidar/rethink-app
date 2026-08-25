@@ -32,3 +32,7 @@ app/google-services.json
 app/fdroidFull/release
 app/playFull/release
 app/websiteFull/release
+
+# embedded-Tailscale AAR build artifacts (built via gomobile / CI)
+tailscale/tailscale.aar
+app/libs/*.aar

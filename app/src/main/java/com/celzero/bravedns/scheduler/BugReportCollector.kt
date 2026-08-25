@@ -66,6 +66,7 @@ class BugReportCollector(val context: Context, workerParameters: WorkerParameter
         BugReportZipper.dumpConsoleLogs(consoleLogRepo, consoleLogFile)
         val ts = dumpLogsAndAppExits(fout)
         addToZip(fout, consoleLogFile)
+        addTailscaleEngineLog(fout)
         // Store the last exit reason time stamp
         persistentState.lastAppExitInfoTimestamp =
             persistentState.lastAppExitInfoTimestamp.coerceAtLeast(ts)
@@ -90,6 +91,28 @@ class BugReportCollector(val context: Context, workerParameters: WorkerParameter
     private fun prepareConsoleLogFile(reportFile: File): File {
         val parent = reportFile.parentFile ?: applicationContext.filesDir
         return BugReportZipper.consoleLogFile(parent)
+    }
+
+    /**
+     * Adds the embedded-Tailscale engine's persistent log (if any) to the
+     * report. The engine tees its diagnostics into
+     * files/tailscale/logs/engine.log, which survives the small console ring.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun addTailscaleEngineLog(reportFile: File) {
+        try {
+            val engineLog = File(
+                Utilities.getTailscaleStateDir(applicationContext),
+                "logs/engine.log"
+            )
+            if (!engineLog.exists() || engineLog.length() <= 0L) return
+            val parent = reportFile.parentFile ?: return
+            val entry = File(parent, "tailscale_engine_log.txt")
+            engineLog.copyTo(entry, overwrite = true)
+            BugReportZipper.rezipAll(parent, entry)
+        } catch (e: Exception) {
+            Logger.w(LOG_TAG_SCHEDULER, "failed to attach tailscale log: ${e.message}")
+        }
     }
 
     private fun dumpLogsAndAppExits(file: File): Long {

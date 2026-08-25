@@ -1185,6 +1185,23 @@ object TunFlowManager : KoinComponent {
             Logger.vv(LOG_TAG_VPN, "flow/upstream: no wg proxy, fall-through $connId, $uid, ${connTracker.query}, ${connTracker.destIP}")
         }
 
+        // embedded tailscale: apps explicitly mapped to the tailnet proxy route
+        // through it ahead of the global (orbot/socks5/http) proxies; checked
+        // after wireguard so app-specific wg rules still win
+        val ts = TailscaleManager.getInstance(ctx.context)
+        if (ts.isEnabled() && ts.isEngineUp && ts.currentState().isUsable) {
+            if (ProxyManager.getProxyIdForApp(uid).contains(TailscaleManager.ID_TS_BASE)) {
+                val pids =
+                    if (rpnIds.isNotEmpty()) {
+                        rpnIds.plus(TailscaleManager.ID_TS_BASE).joinToString(",")
+                    } else {
+                        TailscaleManager.ID_TS_BASE
+                    }
+                logd("flow/upstream: tailscale proxy for $uid, $connId, ${connTracker.query}, ${connTracker.destIP}, returning $pids")
+                return persistAndConstructFlowResponse(ctx, connTracker, pids, connId, uid, forUpstreamAnswer)
+            }
+        }
+
         // carry out this check after wireguard, because wireguard has catchAll and lockdown.
         // if no proxy or dns proxy is enabled, return baseOrAutoOrExit
         Logger.vv(LOG_TAG_VPN, "flow/upstream proxy-enabled? ${appConfig.isProxyEnabled()}, dns-proxy active? ${appConfig.isDnsProxyActive()}, rpn empty? ${rpnIds.isEmpty()} for $connId, $uid, ${connTracker.query}, ${connTracker.destIP}")

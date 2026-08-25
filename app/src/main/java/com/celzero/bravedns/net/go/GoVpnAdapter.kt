@@ -50,6 +50,7 @@ import com.celzero.bravedns.service.BraveVPNService.Companion.NW_ENGINE_NOTIFICA
 import com.celzero.bravedns.service.EventLogger
 import com.celzero.bravedns.service.GlobalProxyHandler
 import com.celzero.bravedns.service.PersistentState
+import com.celzero.bravedns.service.TailscaleManager
 import com.celzero.bravedns.service.ProxyManager
 import com.celzero.bravedns.service.ProxyManager.ID_WG_BASE
 import com.celzero.bravedns.service.RethinkBlocklistManager
@@ -165,6 +166,7 @@ class GoVpnAdapter : KoinComponent {
         setRDNS()
         addTransport()
         setWireguardTunnelModeIfNeeded(opts.tunProxyMode)
+        setTailscaleIfNeeded()
         setSocks5TunnelModeIfNeeded(opts.tunProxyMode)
         setHttpProxyIfNeeded(opts.tunProxyMode)
         setPcapMode(appConfig.getPcapFilePath())
@@ -889,9 +891,67 @@ class GoVpnAdapter : KoinComponent {
     }
 
     /**
-     * TODO - Move these code to common place and set the tunnel mode and other parameters. Return
-     * the tunnel to the adapter.
+     * Adds the embedded-Tailscale socks5 proxy to the tunnel when the engine
+     * reports a usable state. Called on tunnel start-up and whenever the
+     * TailscaleManager signals readiness (login completed, exit node up).
      */
+    suspend fun setTailscaleIfNeeded() {
+        val ts = TailscaleManager.getInstance(context)
+        if (!ts.isEnabled()) return
+
+        if (!ts.isEngineUp || !ts.currentState().isUsable) {
+            Logger.i(LOG_TAG_VPN, "$TAG tailscale not usable yet (${ts.currentState()}), skip add")
+            return
+        }
+        val url = ts.proxyUrl()
+        if (url.isEmpty()) {
+            Logger.w(LOG_TAG_VPN, "$TAG tailscale proxy url empty, skip add")
+            return
+        }
+        try {
+            val res = getProxies()?.addProxy(TailscaleManager.ID_TS_BASE, url)
+            GlobalProxyHandler.track(TailscaleManager.ID_TS_BASE)
+            // socks5 proxies carry no per-proxy DNS (firestack's AddProxyDNS
+            // requires p.DNS(), implemented only by WireGuard), so register
+            // the engine's loopback resolver as a plain-DNS transport. The id
+            // must NOT match the proxy id, else firestack relays queries for
+            // it through that very socks5 endpoint (no UDP there)
+            Intra.addDNSProxy(tunnel, TailscaleManager.ID_TS_DNS, TailscaleManager.TS_DNS_ADDR)
+            Logger.i(
+                LOG_TAG_VPN,
+                "$TAG tailscale proxy added ($url), success? ${res != null}, dns? ${TailscaleManager.TS_DNS_ADDR}"
+            )
+            logEvent(
+                Severity.LOW,
+                "set tailscale proxy",
+                "tailscale socks5 proxy added with url: $url"
+            )
+            ts.applyPendingPrefs()
+        } catch (e: Exception) {
+            Logger.e(LOG_TAG_VPN, "$TAG err adding tailscale proxy: ${e.message}", e)
+            logEvent(
+                Severity.HIGH,
+                "set tailscale proxy error",
+                "error adding tailscale proxy, reason: ${e.message}"
+            )
+        }
+    }
+
+    suspend fun removeTailscaleProxy() {
+        if (!tunnel.isConnected) return
+        try {
+            removeResolver(TailscaleManager.ID_TS_DNS)
+            getProxies()?.removeProxy(TailscaleManager.ID_TS_BASE)
+            GlobalProxyHandler.untrack(TailscaleManager.ID_TS_BASE)
+            Logger.i(LOG_TAG_VPN, "$TAG removed tailscale proxy")
+            logEvent(Severity.LOW, "remove tailscale proxy", "removed tailscale socks5 proxy")
+        } catch (e: Exception) {
+            Logger.w(LOG_TAG_VPN, "$TAG err removing tailscale proxy: ${e.message}")
+        }
+    }
+
+    // TODO - Move these code to common place and set the tunnel mode and other parameters. Return
+    //  the tunnel to the adapter.
     private suspend fun setSocks5Proxy(
         tunProxyMode: AppConfig.TunProxyMode,
         userName: String?,
@@ -1431,7 +1491,8 @@ class GoVpnAdapter : KoinComponent {
             val wgConfigs: List<Config> = WireguardManager.getActiveConfigs()
             val rpnConfigs: Set<CountryConfig> = RpnProxyManager.getEnabledConfigs()
             if (wgConfigs.isEmpty() && rpnConfigs.isEmpty()) {
-                Logger.i(LOG_TAG_VPN, "$TAG no active wg-configs found")
+                Logger.i(LOG_TAG_VPN, "$TAG no active wg-configs found, refreshing tailscale")
+                setTailscaleIfNeeded()
                 return
             }
             // first, refresh or re-add the proxies that are missing or in a degraded state

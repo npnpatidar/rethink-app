@@ -40,6 +40,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: 🧅 Build embedded-Tailscale AAR
+        uses: ./.github/actions/build-tailscale-aar
+
       - name: 🎪 Secrets
         if: success()
         # TODO: change build variant to fdroid if json does not exist

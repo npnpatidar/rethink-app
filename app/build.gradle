@@ -473,16 +473,86 @@ configurations {
 def firestackRepo = project.findProperty("firestackRepo") ?: "github"
 def firestackCommit = project.findProperty("firestackCommit") ?: "main"
 
-def firestackDependency = { ->
-    switch (firestackRepo) {
-        case "jitpack":
-            return "com.github.celzero:firestack:$firestackCommit@aar"
-        case "github":
-            return "com.github.celzero:firestack:$firestackCommit@aar"
-        case "ossrh":
-            return "com.celzero:firestack:$firestackCommit@aar"
+// ---------------------------------------------------------------------
+// Embedded-Tailscale AAR (gomobile bind of ./tailscale, see
+// .github/workflows/tailscale-aar.yml). Resolution modes:
+//   -PtailscaleRepo=local   -> use the AAR at -PtailscaleAarPath=<file>
+//                              (built via `cd tailscale && gomobile bind ...`)
+//   -PtailscaleRepo=release -> download tailscale-<ver>.aar from this
+//                              repo's GitHub releases (tag ts-aar-v<ver>)
+// If app/libs/tailscale.aar exists it is used regardless of mode.
+// ---------------------------------------------------------------------
+def tailscaleRepo = project.findProperty("tailscaleRepo") ?: "release"
+def tailscaleAarPath = project.findProperty("tailscaleAarPath") ?: ""
+def tailscaleReleaseRepo = project.findProperty("tailscaleReleaseRepo") ?: "celzero/rethink-app"
+def tailscaleVersion = project.findProperty("tailscaleVersion") ?: "latest"
+
+def localTailscaleAar = file("${projectDir}/libs/tailscale.aar")
+def downloadedTailscaleAar = file("${projectDir}/build/tailscale/tailscale.aar")
+
+def resolveTailscaleAar = { ->
+    if (localTailscaleAar.exists()) {
+        println("tailscale: using prebuilt ${localTailscaleAar}")
+        return localTailscaleAar
+    }
+    switch (tailscaleRepo) {
+        case "local":
+            def f = file(tailscaleAarPath)
+            if (!f.exists()) {
+                throw new GradleException(
+                    "tailscale: -PtailscaleRepo=local but AAR not found at '${tailscaleAarPath}'. " +
+                    "Build it with: cd tailscale && gomobile bind -target=android -androidapi 23 -javapkg=com.celzero.bravedns -o tailscale.aar .")
+            }
+            return f
+        case "release":
+            // downloaded by downloadTailscaleAar task below
+            if (!downloadedTailscaleAar.exists()) {
+                throw new GradleException(
+                    "tailscale: AAR not downloaded yet; run `./gradlew downloadTailscaleAar` " +
+                    "or build locally with -PtailscaleRepo=local")
+            }
+            return downloadedTailscaleAar
         default:
-            throw new GradleException("Unknown firestackRepo: $firestackRepo")
+            throw new GradleException("Unknown tailscaleRepo: ${tailscaleRepo}")
+    }
+}
+
+// Downloads the prebuilt embedded-Tailscale AAR from GitHub releases.
+// Used when -PtailscaleRepo=release (the default) and app/libs/tailscale.aar
+// is absent. Asset `tailscale.aar` on tag ts-aar-v<tailscaleVersion>, or the
+// latest ts-aar-* release when tailscaleVersion=latest.
+tasks.register('downloadTailscaleAar') {
+    outputs.file(downloadedTailscaleAar)
+    doLast {
+        if (localTailscaleAar.exists()) {
+            println("tailscale: skipping download, ${localTailscaleAar} exists")
+            return
+        }
+        downloadedTailscaleAar.parentFile.mkdirs()
+        def url
+        if (tailscaleVersion == "latest") {
+            // GitHub's stable latest-release asset URL
+            url = "https://github.com/${tailscaleReleaseRepo}/releases/latest/download/tailscale.aar"
+        } else {
+            url = "https://github.com/${tailscaleReleaseRepo}/releases/download/ts-aar-v${tailscaleVersion}/tailscale.aar"
+        }
+        println("tailscale: downloading ${url}")
+        try {
+            new URL(url).withInputStream { ins ->
+                downloadedTailscaleAar.withOutputStream { it << ins }
+            }
+        } catch (Exception e) {
+            throw new GradleException(
+                "tailscale: failed to download AAR from ${url}: ${e.message}. " +
+                "Build one via the 'tailscale-aar' workflow or locally: cd tailscale && gomobile bind -target=android -androidapi 23 -javapkg=com.celzero.bravedns -o tailscale.aar .")
+        }
+    }
+}
+
+// ensure the AAR is present before any variant compiles
+if (tailscaleRepo == "release" && !localTailscaleAar.exists()) {
+    tasks.matching { it.name == 'preBuild' }.configureEach {
+        dependsOn 'downloadTailscaleAar'
     }
 }
 
@@ -560,9 +630,10 @@ dependencies {
     fullImplementation 'com.github.kirich1409:viewbindingpropertydelegate:1.5.9'
     fullImplementation 'com.github.kirich1409:viewbindingpropertydelegate-noreflection:1.5.9'
 
-    // add ":debug" suffix to the dependency to include debug symbols
-    download firestackDependency()
-    implementation firestackDependency()
+    // combined firestack + Tailscale engine (single gomobile AAR, see
+    // .github/actions/build-tailscale-aar); resolved lazily so that
+    // `downloadTailscaleAar` can run first in release mode
+    implementation files(provider({ [resolveTailscaleAar()] }))
 
     // Work manager
     implementation('androidx.work:work-runtime-ktx:2.11.2') {

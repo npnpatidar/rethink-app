@@ -2240,6 +2240,8 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Network
                     vpnAdapter = GoVpnAdapter(ctx, vpnScope, fd, ifaceAddresses, mtu, nwMtu, opts) // may throw
                     Logger.d(LOG_TAG_VPN, "vpn-adapter created with ifaddr: $ifaceAddresses, protos: $protos")
                     io("tunInit") { vpnAdapter?.initResolverProxiesPcap(opts) }
+                    // boot the embedded tailscale engine alongside the tunnel
+                    io("tsStart") { TailscaleManager.getInstance(ctx).onVpnStarted() }
                     io("rpnCheck") { checkForPlusSubscription() }
                     return@withContext ok
                 } else {
@@ -2938,6 +2940,24 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Network
     }
 
     override fun onDestroy() {
+        // stop the embedded tailscale engine along with the tunnel; its socks5
+        // endpoint is meaningless without the VPN capturing app traffic
+        try {
+            val ts = TailscaleManager.getInstance(this)
+            if (ts.isEngineUp) {
+                runBlocking {
+                    try {
+                        vpnAdapter?.removeTailscaleProxy()
+                        ts.onVpnStopped()
+                    } catch (e: Exception) {
+                        Logger.w(LOG_TAG_VPN, "tailscale stop on destroy err: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.w(LOG_TAG_VPN, "tailscale on destroy err: ${e.message}")
+        }
+
         // Dismiss the firewall bubble and tear down its observer.
         //
         // Lifecycle note: onDestroy() is called ONLY when the VPN is truly stopping
@@ -3941,6 +3961,11 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Network
         vpnAdapter?.removeWgProxy(id)
     }
 
+    suspend fun removeTailscaleProxy() {
+        logd("remove tailscale proxy from tunnel")
+        vpnAdapter?.removeTailscaleProxy()
+    }
+
     suspend fun addWireGuardProxy(id: String, force: Boolean = false) {
         logd("add wg from tunnel: $id")
         vpnAdapter?.addWgProxy(id, force)
@@ -3959,6 +3984,16 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Network
     suspend fun readdHttpProxy() {
         logd("readd http proxy")
         vpnAdapter?.readdHttpProxy()
+    }
+
+    /**
+     * Embedded Tailscale engine reached a usable state; (re-)add its socks5
+     * proxy to the tunnel. Called via VpnController from TailscaleManager's
+     * state callback.
+     */
+    suspend fun onTailscaleReady() {
+        logd("tailscale ready, adding proxy to tunnel")
+        vpnAdapter?.setTailscaleIfNeeded()
     }
 
     suspend fun pauseMobileOnlyWireGuardOnNoNw() {
@@ -4034,7 +4069,8 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Network
         val wgConfigs: List<Config> = WireguardManager.getActiveConfigs()
         val rpnConfigs: Set<CountryConfig> = RpnProxyManager.getEnabledConfigs()
         if (wgConfigs.isEmpty() && rpnConfigs.isEmpty()) {
-            Logger.i(LOG_TAG_VPN, "$TAG no active wg-configs found")
+            Logger.i(LOG_TAG_VPN, "$TAG no active wg-configs found, refreshing tailscale")
+            io("tsRefresh") { vpnAdapter?.setTailscaleIfNeeded() }
             return
         }
         // pause or resume the proxies based on the mobile/ssid conditions

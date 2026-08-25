@@ -22,6 +22,8 @@ jobs:
         cache: gradle
     - name: ⚡️ +x gradlew
       run: chmod +x gradlew
+    - name: 🧅 Build embedded-Tailscale AAR
+      uses: ./.github/actions/build-tailscale-aar
     - name: 🎪 Secrets
       if: success()
       # TODO: override iff it doesn't exist
@@ -46,3 +48,11 @@ jobs:
           --warning-mode all
       env:
         VARIANT: ${{ env.VARIANT }}
+    - name: 📦 Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: rethink-debug-apk
+        path: app/build/outputs/apk/**/*.apk
+        retention-days: 14
+        if-no-files-found: error

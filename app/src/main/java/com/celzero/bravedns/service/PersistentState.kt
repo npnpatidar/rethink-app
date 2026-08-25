@@ -117,6 +117,17 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
         // SAF tree URI (content://...) of the directory chosen by the user to store
         // memory-profile heap dumps. Empty when the user hasn't picked a location yet.
         const val MEMORY_PROFILE_DIR_URI = "memory_profile_dir_uri"
+
+        // ---- Embedded Tailscale (see TailscaleManager) ----
+        const val TAILSCALE_ENABLED = "tailscale_enabled"
+        const val TAILSCALE_CONTROL_URL = "tailscale_control_url"
+        const val TAILSCALE_AUTH_KEY = "tailscale_auth_key"
+        const val TAILSCALE_HOSTNAME = "tailscale_hostname"
+        const val TAILSCALE_EXIT_NODE = "tailscale_exit_node"
+        const val TAILSCALE_ADVERTISE_ROUTES = "tailscale_advertise_routes"
+        const val TAILSCALE_ACCEPT_ROUTES = "tailscale_accept_routes"
+        const val TAILSCALE_SHIELDS_UP = "tailscale_shields_up"
+        const val TAILSCALE_MAGIC_DNS = "tailscale_magic_dns"
     }
 
     // when vpn is started by the user, this is set to true; set to false when user stops
@@ -781,4 +792,39 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
     var blockDnsForUnknownApp by booleanPref("block_dns_for_unknown_app").withDefault<Boolean>(false)
 
     var showRethinkBlockNotification by booleanPref("show_rethink_block_notification").withDefault<Boolean>(true)
+
+    // ---- Embedded Tailscale (see TailscaleManager) ----
+
+    // whether the embedded tailscaled engine should be started with the VPN tunnel
+    var tailscaleEnabled by booleanPref(TAILSCALE_ENABLED).withDefault<Boolean>(false)
+
+    // coordination server URL; empty = Tailscale SaaS (controlplane.tailscale.com),
+    // otherwise a Headscale (or compatible) server URL
+    var tailscaleControlUrl by stringPref(TAILSCALE_CONTROL_URL).withDefault<String>("")
+
+    // pre-auth key for non-interactive login; consumed once, then cleared.
+    // stored in app-private prefs; never logged or exported in backups.
+    var tailscaleAuthKey by stringPref(TAILSCALE_AUTH_KEY).withDefault<String>("")
+
+    // hostname this node presents to the tailnet; empty = let tailscale decide
+    var tailscaleHostname by stringPref(TAILSCALE_HOSTNAME).withDefault<String>("")
+
+    // selected exit node: empty = none, "auto:any" = any exit node, else a
+    // stable node ID or IP of the exit node
+    var tailscaleExitNode by stringPref(TAILSCALE_EXIT_NODE).withDefault<String>("")
+
+    // comma-separated CIDRs to advertise as subnet routes (e.g. "10.0.0.0/24")
+    var tailscaleAdvertiseRoutes by stringPref(TAILSCALE_ADVERTISE_ROUTES).withDefault<String>("")
+
+    // accept subnet routes advertised by other nodes in the tailnet
+    var tailscaleAcceptRoutes by booleanPref(TAILSCALE_ACCEPT_ROUTES).withDefault<Boolean>(false)
+
+    // shields-up mode: drop all inbound connections from the tailnet
+    var tailscaleShieldsUp by booleanPref(TAILSCALE_SHIELDS_UP).withDefault<Boolean>(false)
+
+    // MagicDNS (CorpDNS): resolve tailnet hostnames via the coordination server's DNS
+    var tailscaleMagicDns by booleanPref(TAILSCALE_MAGIC_DNS).withDefault<Boolean>(true)
+
+    // last reported ipn.State id from the embedded engine (see TailscaleManager.TsState)
+    var tailscaleState by intPref("tailscale_state").withDefault<Int>(0)
 }

@@ -30,6 +30,9 @@ object ServiceModule {
         // Registered here (main) so both PipKeyManager (main) and BillingServerRepository
         // (play/website) share the same singleton and never diverge on stored values.
         single { SecureIdentityStore(androidContext()) }
+        // embedded-Tailscale engine owner; process-wide singleton so engine
+        // lifecycle survives activity/fragment recreation
+        single { TailscaleManager.getInstance(androidContext()) }
     }
 
     val modules = listOf(serviceModules)

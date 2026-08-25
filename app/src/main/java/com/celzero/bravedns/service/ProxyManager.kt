@@ -32,6 +32,7 @@ object ProxyManager : KoinComponent {
 
     private val db: ProxyAppMappingRepository by inject()
     private val appConfig: AppConfig by inject()
+    private val tsManager: TailscaleManager by inject()
 
     const val ID_ORBOT_BASE = "ORBOT"
     const val ID_WG_BASE = "wg"
@@ -361,7 +362,8 @@ object ProxyManager : KoinComponent {
             pid.startsWith(ID_TCP_BASE) ||
             pid.startsWith(ID_S5_BASE) ||
             pid.startsWith(ID_HTTP_BASE) ||
-            pid.startsWith(ID_RPN_WIN)
+            pid.startsWith(ID_RPN_WIN) ||
+            pid.startsWith(TailscaleManager.ID_TS_BASE)
     }
 
     fun getAppCountForProxy(proxyId: String): Int {
@@ -394,7 +396,8 @@ object ProxyManager : KoinComponent {
                 pid.startsWith(ID_ORBOT_BASE) ||
                 pid.startsWith(ID_S5_BASE) ||
                 pid.startsWith(ID_HTTP_BASE) ||
-                pid.startsWith(Backend.RPN)
+                pid.startsWith(Backend.RPN) ||
+                pid == TailscaleManager.ID_TS_BASE
     }
 
     fun isRpnProxy(ipnProxyId: String): Boolean {
@@ -418,6 +421,10 @@ object ProxyManager : KoinComponent {
                 appConfig.isCustomSocks5Enabled() -> add(ID_S5_BASE)
                 appConfig.isCustomHttpProxyEnabled() -> add(ID_HTTP_BASE)
             }
+
+            if (tsManager.isEnabled() && tsManager.isEngineUp) {
+                add(TailscaleManager.ID_TS_BASE)
+            }
         }
         proxies.forEach {
             sb.append("$it\n")
@@ -433,6 +440,10 @@ object ProxyManager : KoinComponent {
         sb.append("added wg: ${WireguardManager.getNumberOfMappings()}\n")
         sb.append("active wgs: ${WireguardManager.getActiveWgCount()}\n")
         sb.append("isOneWgActive: ${WireguardManager.oneWireGuardEnabled()}\n")
+
+        sb.append("tailscale enabled: ${tsManager.isEnabled()}\n")
+        sb.append("tailscale engine up: ${tsManager.isEngineUp}\n")
+        sb.append("tailscale state: ${tsManager.currentState()}\n")
 
         return sb.toString()
     }

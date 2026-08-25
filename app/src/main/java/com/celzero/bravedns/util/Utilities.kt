@@ -717,6 +717,17 @@ object Utilities {
         return ctx.filesDir.canonicalPath + File.separator + timestamp + File.separator
     }
 
+    /**
+     * Directory for the embedded-Tailscale engine's persistent state (node
+     * identity, profiles). App-private storage; survives app restarts but is
+     * cleared on uninstall / clear-data.
+     */
+    fun getTailscaleStateDir(ctx: Context): File {
+        val dir = File(ctx.filesDir.canonicalPath + File.separator + "tailscale")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
     fun hasLocalBlocklists(ctx: Context, timestamp: Long): Boolean {
         val a =
             Constants.ONDEVICE_BLOCKLISTS_ADM.all {

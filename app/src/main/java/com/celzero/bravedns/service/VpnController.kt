@@ -341,6 +341,22 @@ object VpnController : KoinComponent {
         rvpn?.addWireGuardProxy(id, force)
     }
 
+    suspend fun addTailscaleProxy() {
+        rvpn?.onTailscaleReady()
+    }
+
+    suspend fun removeTailscaleProxy() {
+        rvpn?.removeTailscaleProxy()
+    }
+
+    /**
+     * The embedded Tailscale engine reached a usable (Running) state; make
+     * sure the tunnel carries the tailnet socks5 proxy. No-op when no tunnel.
+     */
+    suspend fun onTailscaleReady() {
+        rvpn?.onTailscaleReady()
+    }
+
     suspend fun refreshOrPauseOrResumeOrReAddProxies() {
         rvpn?.refreshOrPauseOrResumeOrReAddProxies()
     }

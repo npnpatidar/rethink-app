@@ -162,6 +162,47 @@
     <string name="two_argument_no_space" translatable="false">%1$s%2$s</string>
     <string name="two_argument_space" translatable="false">%1$s %2$s</string>
     <string name="two_argument_colon" translatable="false">%1$s: %2$s</string>
+
+    <!-- Embedded Tailscale (TailscaleSettingsActivity) -->
+    <string name="ts_title">Tailscale</string>
+    <string name="ts_proxy_card_desc">Embedded Tailscale node: reach your tailnet and exit nodes through Rethink\'s proxy chain</string>
+    <string name="ts_desc">Embeds a userspace Tailscale node inside Rethink. Traffic routed to the Tailscale proxy (per-app or via WireGuard-style assignment) reaches your tailnet and exit nodes. Works with Tailscale or any Headscale-compatible coordination server.</string>
+    <string name="ts_state_no_state">Status: off</string>
+    <string name="ts_state_running">Status: connected</string>
+    <string name="ts_state_starting">Status: connecting…</string>
+    <string name="ts_state_needs_login">Status: login required</string>
+    <string name="ts_state_needs_machine_auth">Status: machine authorization required</string>
+    <string name="ts_state_stopped">Status: stopped</string>
+    <string name="ts_state_other_user">Status: in use by another user</string>
+    <string name="ts_account_header">Account</string>
+    <string name="ts_login_interactive">Log in with browser</string>
+    <string name="ts_login_with_auth_key">Log in with auth key</string>
+    <string name="ts_logout">Log out</string>
+    <string name="ts_auth_key_hint">Auth key (optional)</string>
+    <string name="ts_auth_key_required">Enter an auth key first</string>
+    <string name="ts_control_url_hint">Coordination server URL (empty = Tailscale; e.g. https://headscale.example.com)</string>
+    <string name="ts_control_url_saved">Coordination server saved. Restarting Tailscale…</string>
+    <string name="ts_routing_header">Routing</string>
+    <string name="ts_exit_node_hint">Exit node (node ID, IP, "auto:any", empty = none)</string>
+    <string name="ts_apply">Apply</string>
+    <string name="ts_assign_apps">Choose apps to route via Tailscale</string>
+    <string name="ts_shields_up">Shields up (block inbound tailnet connections)</string>
+<string name="ts_accept_routes">Accept subnet routes from other nodes</string>
+<string name="ts_magic_dns">MagicDNS (resolve tailnet hostnames)</string>
+<string name="ts_magic_dns_suffix">Tailnet DNS suffix: %1$s</string>
+<string name="ts_node_info">%1$s  •  %2$s</string>
+<string name="ts_advertise_routes_hint">Advertise routes (comma-separated CIDRs, e.g. 10.0.0.0/24,192.168.1.0/24)</string>
+<string name="ts_advertise_routes_applied">Advertise routes updated</string>
+<string name="ts_advertise_routes_cleared">Advertise routes cleared</string>
+    <string name="ts_requires_vpn_toast">Enable the Rethink VPN to route traffic through Tailscale</string>
+    <string name="ts_disabled_toast">Tailscale disabled</string>
+    <string name="ts_login_started">Login started</string>
+    <string name="ts_login_failed">Login failed</string>
+    <string name="ts_logged_out">Logged out</string>
+    <string name="ts_exit_node_applied">Exit node updated</string>
+    <string name="ts_exit_node_failed">Exit node update failed</string>
+    <string name="ts_footer">Rethink routes apps you assign to the Tailscale proxy through your tailnet. DNS continues to be handled by your selected Rethink DNS resolver.</string>
+<string name="ts_incompatible_with_rinr">Tailscale is incompatible with "Route Rethink in Rethink". Disable that setting first.</string>
     <string name="two_argument" translatable="false">%1$s / %2$s</string>
     <string name="two_argument_dot" translatable="false">%1$s · %2$s</string>
     <string name="two_argument_parenthesis" translatable="false">%1$s (%2$s)</string>

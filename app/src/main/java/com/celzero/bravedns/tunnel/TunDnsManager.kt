@@ -17,6 +17,7 @@ import com.celzero.bravedns.service.PersistentState
 import com.celzero.bravedns.service.ProxyManager
 import com.celzero.bravedns.service.ProxyManager.ID_WG_BASE
 import com.celzero.bravedns.service.ProxyManager.isAnyUserSetProxy
+import com.celzero.bravedns.service.TailscaleManager
 import com.celzero.bravedns.service.TunFirewallManager
 import com.celzero.bravedns.service.VpnController
 import com.celzero.bravedns.service.WireguardManager
@@ -63,6 +64,7 @@ object TunDnsManager: KoinComponent {
     private val persistentState by inject<PersistentState>()
     private val appConfig by inject<AppConfig>()
     private val netLogTracker by inject<NetLogTracker>()
+    private val tsManager: TailscaleManager by inject()
 
     private val rethinkUid = android.os.Process.myUid()
 
@@ -370,6 +372,19 @@ object TunDnsManager: KoinComponent {
             return Pair(Backend.Default, "")
         }
 
+        // MagicDNS: route tailnet-suffix queries to Tailscale's DNS resolver.
+        // dots are normalized on both sides: the engine may report the suffix
+        // as "n", ".n." or "n." (headscale base-domain quirks) and incoming
+        // fqdns may carry a trailing dot
+        if (tsManager.isMagicDnsEnabled() && tsManager.isEngineUp) {
+            val suffix = tsManager.magicDnsSuffix().trim('.', ' ')
+            val name = domain.trim('.', ' ')
+            if (suffix.isNotEmpty() && (name.endsWith(".$suffix") || name == suffix)) {
+                logd("(onQuery)magic dns suffix match for $domain, routing to tailscale")
+                return Pair(TailscaleManager.ID_TS_DNS, "")
+            }
+        }
+
         val defaultTid =
             if (appConfig.isSystemDns() || (VpnController.isAppPaused() && isLockdown)) {
                 // in vpn-lockdown mode+appPause , use system dns if the app is paused to mimic
@@ -423,16 +438,19 @@ object TunDnsManager: KoinComponent {
                 return Pair(defaultTid, "")
             }
             val usesCellularNw = isIfaceCellular
-            // only when there is an uid, we need to calculate wireguard ids
-            // gives all the possible wgs for the app regardless of usesMobileNetwork
             val ssid = ssid ?: ""
             val rpnIds = if (RpnProxyManager.isRpnActive()) RpnProxyManager.getAllPossibleConfigIdsForApp(uid, ip = "", port = 0, domain, usesCellularNw, ssid) else emptyList()
             val wgIds = WireguardManager.getAllPossibleConfigIdsForApp(uid, ip = "", port = 0, domain, usesCellularNw, ssid, defaultTid)
+            val tsId = run {
+                if (tsManager.isEnabled() && tsManager.isEngineUp && tsManager.currentState().isUsable &&
+                    ProxyManager.getProxyIdForApp(uid).contains(TailscaleManager.ID_TS_BASE)) {
+                    listOf(TailscaleManager.ID_TS_BASE)
+                } else emptyList()
+            }
             val updatedRpnIds = rpnIds.map { if (it == Backend.Block) Backend.BlockAll else it }.distinct()
             val updatedWgIds = wgIds.map { if (it == Backend.Block) Backend.BlockAll else it }.distinct()
 
-            logv("(onQuery)wg ids($updatedWgIds), rpn id($updatedRpnIds) found for uid: $uid")
-            val combinedIds = updatedRpnIds + updatedWgIds
+            val combinedIds = updatedRpnIds + updatedWgIds + tsId
             val wgRpnIds = combinedIds.joinToString(",")
             val rpnOrWgOrDefaultTid =
                 if (combinedIds.any { it == Backend.BlockAll }) {
@@ -648,7 +666,7 @@ object TunDnsManager: KoinComponent {
 
 
     private fun isAnyWgOrRpnDns(tid: List<String>): Boolean {
-        return tid.any { it.startsWith(ID_WG_BASE, ignoreCase = true) || it.startsWith(Backend.RpnWin, ignoreCase = true) }
+        return tid.any { it.startsWith(ID_WG_BASE, ignoreCase = true) || it.startsWith(Backend.RpnWin, ignoreCase = true) || it == TailscaleManager.ID_TS_BASE }
     }
 
     private fun appendDnsCacheIfNeeded(id: String): String {

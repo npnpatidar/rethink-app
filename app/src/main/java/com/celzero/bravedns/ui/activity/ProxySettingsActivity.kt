@@ -162,6 +162,10 @@ class ProxySettingsActivity : BaseActivity(R.layout.fragment_proxy_configure) {
 
     private fun initClickListeners() {
 
+        b.settingsActivityTailscaleContainer.setOnClickListener {
+            startActivity(Intent(this, TailscaleSettingsActivity::class.java))
+        }
+
         b.settingsActivityRpnContainer.setOnClickListener { openRpnScreen() }
 
         b.rpnRefresh.setOnClickListener { refresh(b.rpnRefresh) }

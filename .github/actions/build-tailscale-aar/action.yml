@@ -1,0 +1,79 @@
+# Builds the combined gomobile AAR (firestack + embedded-Tailscale engine)
+# into app/libs/tailscale.aar.
+#
+# One AAR is mandatory: gomobile hardcodes libgojni.so and the go.Seq JNI
+# bridge, so firestack and the Tailscale wrapper must be bound together in a
+# single invocation. The bind recipe mirrors celzero/firestack's Makefile
+# (-javapkg, -tags android, runtime write_err overlay, page-size ldflags).
+name: "Build combined firestack+Tailscale AAR"
+description: "gomobile bind of firestack + ./tailscale; output at app/libs/tailscale.aar"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        # keep in sync with tailscale/go.mod and firestack's go.mod (go 1.26)
+        go-version: "1.26.x"
+        cache-dependency-path: tailscale/go.sum
+
+    - name: Install gomobile + NDK
+      shell: bash
+      run: |
+        set -euo pipefail
+        # tidy first so go.sum covers the tool packages, then install
+        # gomobile/gobind from the module's own pinned x/mobile version
+        (cd tailscale && go mod tidy && \
+          go install golang.org/x/mobile/cmd/gobind golang.org/x/mobile/cmd/gomobile)
+        NDK="28.2.13676358"
+        if ! ls "$ANDROID_HOME/ndk/$NDK" >/dev/null 2>&1; then
+          sdkmanager --install "ndk;$NDK" > /dev/null
+        fi
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK" >> "$GITHUB_ENV"
+
+    - name: Bind combined AAR
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd tailscale
+        # pin the exact firestack revision rethink currently consumes
+        # (com.celzero:firestack:61894b7fdb on Maven Central / Jitpack);
+        # resolves go.mod/go.sum if the pinned pseudo-version has drifted
+        go get github.com/celzero/firestack@61894b7fdb || true
+        go mod download
+        go mod tidy
+
+        # runtime log-tag patch overlay, replicating firestack's Makefile:
+        # tools/runtime_write_err_android.patch (vendored from firestack)
+        # rewrites GOROOT's src/runtime/write_err_android.go so Go runtime
+        # fatals land in the crash log buffer. Applied by hand via `patch`
+        # + a hand-rolled overlay.json (same shape go-patch-overlay emits).
+        mkdir -p build/src/runtime
+        cp "$(go env GOROOT)/src/runtime/write_err_android.go" build/src/runtime/
+        (cd build && patch -p1 -f < "$OLDPWD/tools/runtime_write_err_android.patch")
+        printf '{"Replace":{"src/runtime/write_err_android.go":"%s"}}' \
+          "$PWD/build/src/runtime/write_err_android.go" > build/overlay.json
+        cat build/overlay.json
+
+        # combined bind: firestack's exported packages + the tailscale wrapper.
+        # Mirrors celzero/firestack Makefile flags:
+        #   GOBIND=bind -trimpath -v -x -a -javapkg com.celzero.firestack
+        #   ANDROID23=-androidapi 23 -target=android -tags='android'
+        #   LDFLAGS='-checklinkname=0 -w -s -buildid=' (+ Date/Commit -X omitted)
+        #   CGO_LDFLAGS='-s -w -Wl,-z,max-page-size=16384'
+        export CGO_LDFLAGS='-Wl,-z,max-page-size=16384'
+        gomobile bind -trimpath -a \
+          -javapkg=com.celzero.firestack \
+          -androidapi 23 -target=android -tags='android,ts_omit_taildrop' \
+          -overlay="$(pwd)/build/overlay.json" \
+          -ldflags '-checklinkname=0 -w -s -buildid=' \
+          -gcflags='-trimpath' \
+          -o rethink-engine.aar \
+          github.com/celzero/firestack/intra \
+          github.com/celzero/firestack/intra/backend \
+          github.com/celzero/firestack/intra/settings \
+          .
+
+        mkdir -p ../app/libs
+        install rethink-engine.aar ../app/libs/tailscale.aar

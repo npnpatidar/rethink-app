@@ -1,0 +1,75 @@
+# Builds the combined firestack + embedded-Tailscale AAR via gomobile and
+# publishes it. The app's APK workflows build the same AAR inline via
+# .github/actions/build-tailscale-aar; this workflow additionally attaches it
+# to GitHub releases tagged ts-aar-v* for offline consumption
+# (-PtailscaleRepo=release).
+name: tailscale-aar
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tailscale/**"
+      - ".github/actions/build-tailscale-aar/**"
+      - ".github/workflows/tailscale-aar.yml"
+  pull_request:
+    paths:
+      - "tailscale/**"
+      - ".github/actions/build-tailscale-aar/**"
+      - ".github/workflows/tailscale-aar.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Attach AAR to a ts-aar-v* release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed only when publishing a release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build combined AAR
+        uses: ./.github/actions/build-tailscale-aar
+
+      - name: Smoke-test AAR contents
+        run: |
+          unzip -l app/libs/tailscale.aar | grep -E "classes.jar|jni/" || {
+            echo "AAR missing classes or native libs"; exit 1; }
+          unzip -l app/libs/tailscale.aar | grep -q "jni/arm64-v8a/libgojni.so" || {
+            echo "AAR missing arm64 native lib"; exit 1; }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rethink-engine-aar
+          path: app/libs/tailscale.aar
+          retention-days: 14
+
+      - name: Publish to release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          TAG="ts-aar-${VERSION}"
+          gh release create "$TAG" app/libs/tailscale.aar \
+            --title "Combined firestack+Tailscale AAR ${VERSION}" \
+            --notes "Combined gomobile AAR (firestack ${{ '61894b7fdb' }} + Tailscale engine) built from ${GITHUB_SHA}. Consume with -PtailscaleRepo=release." \
+            --latest=false

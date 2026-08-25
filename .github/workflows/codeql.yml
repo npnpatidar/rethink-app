@@ -41,6 +41,10 @@ jobs:
       - name: ⚡️ +x gradlew
         run: chmod +x gradlew
 
+      - name: 🧅 Build embedded-Tailscale AAR
+        uses: ./.github/actions/build-tailscale-aar
+
+
       - name: 🎪 Secrets
         if: success()
         # developers.google.com/android/guides/google-services-plugin#adding_the_json_file

@@ -27,6 +27,9 @@ In other words, <em>Rethink DNS + Firewall + VPN</em> has three primary modes, V
 ### VPN / Proxifier
 Rethink supports forwarding TCP & UDP over SOCKS5, HTTP CONNECT, and WireGuard tunnels. Split-tunneling further helps run multiple such tunnels at the same time and lets users route different apps over different tunnels. For example, one could route Firefox over SOCKS5 connecting to Tor, Netflix over WireGuard connecting through any popular VPN provider, and Telegram or WhatsApp over censorship-resistant HTTP CONNECT endpoints at the same time.
 
+### Embedded Tailscale
+A userspace [Tailscale](https://tailscale.com) node runs inside the app (see [`tailscale/`](tailscale/) and [`docs/tailscale.md`](docs/tailscale.md)). Apps assigned to the Tailscale proxy reach your tailnet and exit nodes; works with Tailscale SaaS or any Headscale-compatible coordination server (Proxy → Tailscale).
+
 ### Firewall
 The firewall doesn't really care about the connections per se rather what's making those connections. This is different from the traditional firewalls but in-line with [Little Snitch](https://www.obdev.at/products/littlesnitch/index.html), [LuLu](https://objective-see.com/products/lulu.html), [Glasswire](https://glasswire.com/) and others.
 
